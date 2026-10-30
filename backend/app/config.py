@@ -7,3 +7,4 @@ IGNORE_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__",
 IGNORE_EXTS = {".png", ".jpg", ".gif", ".pdf", ".zip", ".exe", ".dll",
                ".so", ".pyc", ".lock", ".min.js", ".map"}
 SUPPORTED_EXTS = {".py", ".js", ".ts", ".java"}  # limited languages for prototype
+MAX_UPLOAD_BYTES = 50_000_000
