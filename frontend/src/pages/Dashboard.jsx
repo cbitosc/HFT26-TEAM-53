@@ -1,6 +1,6 @@
 
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Upload,
   FolderGit2,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 function Dashboard() {
+    const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("zip");
   const [selectedFile, setSelectedFile] = useState(null);
   const [githubUrl, setGithubUrl] = useState("");
@@ -35,20 +36,24 @@ function Dashboard() {
   };
 
   const handleContinue = () => {
-    if (activeTab === "zip" && !selectedFile) {
-      setMessage("Please select a repository ZIP file first.");
-      return;
-    }
+  if (activeTab === "zip" && !selectedFile) {
+    setMessage("Please select a repository ZIP file first.");
+    return;
+  }
 
-    if (activeTab === "github" && !githubUrl.trim()) {
-      setMessage("Please enter a GitHub repository URL.");
-      return;
-    }
+  if (activeTab === "github" && !githubUrl.trim()) {
+    setMessage("Please enter a GitHub repository URL.");
+    return;
+  }
 
-    setMessage(
-      "Your repository details are ready. Backend integration is our next step!"
-    );
-  };
+  navigate("/processing", {
+    state: {
+      source: activeTab,
+      fileName: selectedFile?.name || "",
+      githubUrl: githubUrl,
+    },
+  });
+};
 
   return (
     <div className="min-h-screen bg-[#090d18] text-white">
