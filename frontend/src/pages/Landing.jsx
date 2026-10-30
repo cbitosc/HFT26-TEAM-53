@@ -57,7 +57,7 @@ function Navbar() {
       </div>
 
       <a
-        href="#get-started"
+        href="/dashboard"
         className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-violet-100"
       >
         Get Started <ArrowRight className="ml-1 inline" size={15} />
@@ -179,7 +179,7 @@ export default function Landing() {
 
           <div id="get-started" className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="#"
+              href="/dashboard"
               className="group rounded-xl bg-violet-500 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-1 hover:bg-violet-400"
             >
               Explore your repository
