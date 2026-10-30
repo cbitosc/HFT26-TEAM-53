@@ -3,6 +3,7 @@ import file_walker
 from config import WORKSPACE
 
 CHUNK_LINES = 40
+LOW_PRIORITY = ("test", "example", "docs", "demo", "tutorial", "benchmark")
 STOP = {"the", "are", "how", "what", "where", "does", "and", "for", "this",
         "that", "which", "with", "from", "handled", "implemented"}
 SYMBOL = re.compile(r"^\s*(?:async\s+def|def|class|function)\s+(\w+)")
@@ -36,7 +37,8 @@ def search(repo_id, query, top_k=5):
         sym_hits = [t for t in terms if c["symbol"] and t in c["symbol"].lower()]
         body_hits = [t for t in terms if t in c["lower"]]
         score = 3 * len(path_hits) + 4 * len(sym_hits) + len(body_hits)
-        if "test" not in terms and "test" in c["file_path"].lower():
+         path_l = c["file_path"].lower()
+        if any(w in path_l and w not in terms for w in LOW_PRIORITY):
             score *= 0.5
         if score == 0:
             continue
