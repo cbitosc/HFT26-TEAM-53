@@ -19,9 +19,27 @@ def create_database():
             function_name TEXT NOT NULL,
             start_line INTEGER,
             end_line INTEGER,
-            code TEXT
+            code TEXT,
+            structure_type TEXT DEFAULT 'function',
+            language TEXT DEFAULT 'unknown'
         )
     """)
+
+    # Safely upgrade existing databases
+    cursor.execute("PRAGMA table_info(code_files)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "structure_type" not in columns:
+        cursor.execute("""
+            ALTER TABLE code_files
+            ADD COLUMN structure_type TEXT DEFAULT 'function'
+        """)
+
+    if "language" not in columns:
+        cursor.execute("""
+            ALTER TABLE code_files
+            ADD COLUMN language TEXT DEFAULT 'unknown'
+        """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS search_history (
@@ -34,24 +52,42 @@ def create_database():
     conn.commit()
     conn.close()
 
-    print("Database created successfully!")
+    print("Database created/updated successfully!")
 
 
-def insert_function(repository, file_path, function_name,
-                    start_line, end_line, code):
+def insert_structure(repository, file_path, name,
+                     start_line, end_line, code,
+                     structure_type="function",
+                     language="unknown"):
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
         INSERT INTO code_files
         (repository, file_path, function_name,
-         start_line, end_line, code)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (repository, file_path, function_name,
-          start_line, end_line, code))
+         start_line, end_line, code,
+         structure_type, language)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        repository, file_path, name,
+        start_line, end_line, code,
+        structure_type, language
+    ))
 
     conn.commit()
     conn.close()
+
+
+# Keep compatibility with the existing Python indexer
+def insert_function(repository, file_path, function_name,
+                    start_line, end_line, code):
+
+    insert_structure(
+        repository, file_path, function_name,
+        start_line, end_line, code,
+        "function", "python"
+    )
 
 
 def get_all_functions():
@@ -80,3 +116,4 @@ def save_search(query):
 
 if __name__ == "__main__":
     create_database()
+
