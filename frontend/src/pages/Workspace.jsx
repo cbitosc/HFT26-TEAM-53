@@ -1,7 +1,12 @@
 
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
+import {
+  getRepository,
+  getRepositoryFile,
+  searchRepository,
+  askRepository,
+} from "../services/api";
 import Editor from "@monaco-editor/react";
 import {
   Code2,
@@ -101,13 +106,88 @@ const sampleResults = [
   },
 ];
 
+function buildFileTree(files) {
+  const root = { name: "root", folders: {}, files: [] };
+
+  files.forEach((file) => {
+    const parts = file.path.split("/");
+    let current = root;
+
+    parts.forEach((part, index) => {
+      if (index === parts.length - 1) {
+        current.files.push(file);
+      } else {
+        if (!current.folders[part]) {
+          current.folders[part] = {
+            name: part,
+            folders: {},
+            files: [],
+          };
+        }
+
+        current = current.folders[part];
+      }
+    });
+  });
+
+  return root;
+}
+
+
 function Workspace() {
     const location = useLocation();
 
 const repoId = location.state?.repoId;
-const repoData = location.state?.repoData;
+const initialRepoData = location.state?.repoData;
+
+const [repoData, setRepoData] = useState(initialRepoData || null);
+const [repositoryLoading, setRepositoryLoading] = useState(false);
+const [repositoryError, setRepositoryError] = useState("");
+useEffect(() => {
+  if (!repoId) {
+    setRepositoryError("Repository ID not found. Please upload a repository again.");
+    return;
+  }
+
+  let cancelled = false;
+
+  const fetchRepository = async () => {
+    try {
+      setRepositoryLoading(true);
+      setRepositoryError("");
+
+      const data = await getRepository(repoId);
+
+      if (!cancelled) {
+        setRepoData(data);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setRepositoryError(
+          error.message || "Failed to fetch repository details."
+        );
+      }
+    } finally {
+      if (!cancelled) {
+        setRepositoryLoading(false);
+      }
+    }
+  };
+
+  fetchRepository();
+
+  return () => {
+    cancelled = true;
+  };
+}, [repoId]);
+    
   const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState(null);
+const [searchLoading, setSearchLoading] = useState(false);
+const [searchError, setSearchError] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+const [chatError, setChatError] = useState("");
 
 const [chatMessages, setChatMessages] = useState([
   {
@@ -122,11 +202,79 @@ const [chatMessages, setChatMessages] = useState([
 const [selectedFileType, setSelectedFileType] = useState("All");
   const [openTabs, setOpenTabs] = useState([sampleResults[0]]);
 const editorRef = useRef(null);
+const fileRequestRef = useRef(0);
 const [targetLine, setTargetLine] = useState(1);
+const [fileContent, setFileContent] = useState("");
+const [fileLoading, setFileLoading] = useState(false);
+const [fileError, setFileError] = useState("");
+const repositoryResults = Array.isArray(repoData?.files)
+  ? repoData.files.map((file) => ({
+      title: file.path.split("/").pop(),
+      path: file.path,
+      language: file.language,
+      lines: `1–${file.line_count}`,
+      targetLine: 1,
+      description: `${file.line_count} lines of code`,
+      snippet: "",
+    }))
+  : sampleResults;
+  
+  const fileTree = buildFileTree(repositoryResults);
 
-const handleOpenFile = (item) => {
+  const repositoryName =
+  repoData?.name ||
+  repoData?.repo_name ||
+  repoData?.repository_name ||
+  "Your Repository";
+
+  useEffect(() => {
+  if (!repoData?.files?.length || !repoId) return;
+
+  const firstFile = repositoryResults[0];
+
+  setSelectedResult(firstFile);
+  setTargetLine(1);
+  setOpenTabs([firstFile]);
+  setFileContent("");
+  setFileError("");
+
+  let cancelled = false;
+
+  const loadFirstFile = async () => {
+    try {
+      setFileLoading(true);
+
+      const data = await getRepositoryFile(repoId, firstFile.path);
+
+      if (!cancelled) {
+        setFileContent(data.content || "");
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setFileError(error.message || "Unable to load this file.");
+      }
+    } finally {
+      if (!cancelled) {
+        setFileLoading(false);
+      }
+    }
+  };
+
+  loadFirstFile();
+
+  return () => {
+    cancelled = true;
+  };
+}, [repoData, repoId]);
+
+
+const handleOpenFile = async (item) => {
+  const requestId = ++fileRequestRef.current;
+
   setSelectedResult(item);
   setTargetLine(item.targetLine || 1);
+  setFileContent(item.snippet || "");
+  setFileError("");
 
   setOpenTabs((previousTabs) => {
     const alreadyOpen = previousTabs.some(
@@ -137,10 +285,74 @@ const handleOpenFile = (item) => {
 
     return [...previousTabs, item];
   });
+
+  if (!repoId) return;
+
+  try {
+    setFileLoading(true);
+
+    const data = await getRepositoryFile(repoId, item.path);
+
+    if (requestId === fileRequestRef.current) {
+      setFileContent(data.content || "");
+    }
+  } catch (error) {
+    if (requestId === fileRequestRef.current) {
+      setFileError(error.message || "Unable to load this file.");
+    }
+  } finally {
+    if (requestId === fileRequestRef.current) {
+      setFileLoading(false);
+    }
+  }
 };
 
 
-const handleCloseTab = (path) => {
+const handleSearch = async () => {
+  if (!search.trim()) return;
+
+  if (!repoId) {
+    setSearchError("Repository ID is missing. Please upload a repository again.");
+    return;
+  }
+
+  try {
+    setSearchLoading(true);
+    setSearchError("");
+    setSearchResults(null);
+
+    const data = await searchRepository(repoId, search.trim(), 10);
+
+    const results = Array.isArray(data)
+  ? data
+  : Array.isArray(data?.results)
+    ? data.results
+    : [];
+
+const formattedResults = results
+  .filter((item) => item.file_path || item.path)
+  .map((item) => {
+    const filePath = item.file_path || item.path;
+
+    return {
+      title: item.symbol || filePath.split("/").pop(),
+      path: filePath,
+      language: item.language || "Other",
+      lines: `${item.start_line || 1}–${item.end_line || item.start_line || 1}`,
+      targetLine: item.start_line || 1,
+      description: item.description || "Relevant code match",
+      snippet: item.snippet || "",
+    };
+  });
+
+setSearchResults(formattedResults);
+  } catch (error) {
+    setSearchError(error.message || "Search failed. Please try again.");
+  } finally {
+    setSearchLoading(false);
+  }
+};
+const handleCloseTab = async (path) => {
   const remainingTabs = openTabs.filter(
     (tab) => tab.path !== path
   );
@@ -148,15 +360,49 @@ const handleCloseTab = (path) => {
   setOpenTabs(remainingTabs);
 
   if (selectedResult?.path === path) {
-    setSelectedResult(
+    const nextTab =
       remainingTabs.length > 0
         ? remainingTabs[remainingTabs.length - 1]
-        : null
-    );
+        : null;
+
+    setSelectedResult(nextTab);
+
+    if (!nextTab) {
+      setFileContent("");
+      setFileError("");
+      setTargetLine(1);
+      return;
+    }
+
+    setTargetLine(nextTab.targetLine || 1);
+    setFileError("");
+
+    if (!repoId) {
+      setFileContent(nextTab.snippet || "");
+      return;
+    }
+
+    try {
+      setFileLoading(true);
+
+      const data = await getRepositoryFile(repoId, nextTab.path);
+
+      setFileContent(data.content || "");
+    } catch (error) {
+      setFileError(error.message || "Unable to load this file.");
+      setFileContent("");
+    } finally {
+      setFileLoading(false);
+    }
   }
 };
-const handleSendMessage = () => {
-  if (!chatInput.trim()) return;
+const handleSendMessage = async () => {
+  if (!chatInput.trim() || chatLoading) return;
+
+  if (!repoId) {
+    setChatError("Repository ID is missing. Please upload a repository again.");
+    return;
+  }
 
   const userMessage = chatInput.trim();
 
@@ -169,18 +415,51 @@ const handleSendMessage = () => {
   ]);
 
   setChatInput("");
+  setChatError("");
 
-  const aiResponse = selectedResult
-    ? `You're currently viewing ${selectedResult.path}. ${selectedResult.description} I'll be able to provide detailed, evidence-backed answers once the backend AI integration is connected.`
-    : "Please select a code file first so I can provide context about your repository. The backend AI integration is coming soon.";
+  try {
+    setChatLoading(true);
 
-  setChatMessages((previousMessages) => [
-    ...previousMessages,
-    {
-      role: "assistant",
-      content: aiResponse,
-    },
-  ]);
+    const data = await askRepository(repoId, userMessage, 10);
+
+    const answer =
+  data.answer ||
+  "I couldn't find enough information to answer that question.";
+
+const answerSourceNotice =
+  data.answer_source === "none"
+    ? "\n\nI couldn't generate an AI-supported answer for this question."
+    : data.answer_source === "llm"
+      ? "\n\nAI-generated answer based on repository context."
+      : "";
+
+    const references = Array.isArray(data.references)
+      ? data.references
+      : [];
+
+    const referenceText = references.length
+      ? "\n\nReferences:\n" +
+        references
+          .map((ref) =>
+            `${ref.file_path || ref.path || "Unknown file"}${
+              ref.start_line ? ` (line ${ref.start_line})` : ""
+            }`
+          )
+          .join("\n")
+      : "";
+
+    setChatMessages((previousMessages) => [
+      ...previousMessages,
+      {
+        role: "assistant",
+        content: answer + answerSourceNotice + referenceText,
+      },
+    ]);
+  } catch (error) {
+    setChatError(error.message || "Unable to get an AI response.");
+  } finally {
+    setChatLoading(false);
+  }
 };
 useEffect(() => {
   if (editorRef.current && selectedResult) {
@@ -195,7 +474,7 @@ useEffect(() => {
   }
 }, [selectedResult, targetLine]);
 
-  const filteredResults = sampleResults.filter((item) => {
+  const filteredResults = repositoryResults.filter((item) => {
   const content = [
     item.title,
     item.path,
@@ -218,11 +497,13 @@ useEffect(() => {
     c: "C",
   };
 
-  const language = languageMap[extension] || "Other";
+  const language = String(
+  item.language || languageMap[extension] || "Other"
+).toLowerCase();
 
-  const matchesLanguage =
-    selectedLanguage === "All" ||
-    language === selectedLanguage;
+const matchesLanguage =
+  selectedLanguage === "All" ||
+  language === selectedLanguage.toLowerCase();
 
   const fileTypeMap = {
     jsx: "Components",
@@ -244,6 +525,7 @@ useEffect(() => {
 
   return matchesSearch && matchesLanguage && matchesFileType;
 });
+const displayedResults = searchResults ?? filteredResults;
 
   return (
     <div className="min-h-screen bg-[#090d18] text-white">
@@ -268,13 +550,13 @@ useEffect(() => {
             <Folder size={15} />
             Repository workspace
             <ChevronRight size={14} />
-            HFT26-TEAM-53
+            {repositoryName}
           </div>
 
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold md:text-4xl">
-                HFT26-TEAM-53
+                {repositoryName}
               </h1>
               <p className="mt-2 text-gray-400">
                 Explore files, search code and understand your repository.
@@ -288,14 +570,18 @@ useEffect(() => {
           </div>
         </div>
 
+        
+
         <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-[#111827] p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm text-gray-400">Files indexed</span>
               <Files className="text-violet-400" size={20} />
             </div>
-            <p className="text-3xl font-bold">128</p>
-            <p className="mt-1 text-xs text-gray-500">Sample data</p>
+            <p className="text-3xl font-bold">
+  {repoData?.file_count ?? repoData?.files?.length ?? 0}
+</p>
+<p className="mt-1 text-xs text-gray-500">Files indexed</p>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-[#111827] p-5">
@@ -303,8 +589,10 @@ useEffect(() => {
               <span className="text-sm text-gray-400">Languages</span>
               <Languages className="text-cyan-400" size={20} />
             </div>
-            <p className="text-3xl font-bold">4</p>
-            <p className="mt-1 text-xs text-gray-500">Sample data</p>
+            <p className="text-3xl font-bold">
+  {Object.keys(repoData?.languages || {}).length}
+</p>
+<p className="mt-1 text-xs text-gray-500">Languages detected</p>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-[#111827] p-5">
@@ -312,8 +600,12 @@ useEffect(() => {
               <span className="text-sm text-gray-400">Last indexed</span>
               <Clock3 className="text-pink-400" size={20} />
             </div>
-            <p className="text-xl font-bold">Just now</p>
-            <p className="mt-1 text-xs text-gray-500">Demo workspace</p>
+            <p className="text-xl font-bold">
+  {repoData ? "Completed" : "Loading..."}
+</p>
+<p className="mt-1 text-xs text-gray-500">
+  Repository indexing status
+</p>
           </div>
         </section>
 
@@ -340,14 +632,18 @@ useEffect(() => {
             </div>
 
             <button
-              onClick={() => {
-                if (!search.trim()) setSearch("dashboard");
-              }}
-              className="rounded-xl bg-violet-600 px-6 py-3 font-semibold transition hover:bg-violet-500"
-            >
-              Search code
-            </button>
+  onClick={handleSearch}
+  disabled={searchLoading || !search.trim()}
+  className="rounded-xl bg-violet-600 px-6 py-3 font-semibold transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+>
+  {searchLoading ? "Searching..." : "Search code"}
+</button>
                     </div>
+                    {searchError && (
+  <p className="mt-2 text-sm text-red-400">
+    {searchError}
+  </p>
+)}
 
           {/* Search Filters */}
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -416,49 +712,20 @@ useEffect(() => {
     >
       {folderOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       <FolderOpen size={17} className="text-violet-400" />
-      HFT26-TEAM-53
+      {repositoryName}
     </button>
 
     {folderOpen && (
-      <div className="ml-5 mt-2 border-l border-white/10 pl-3">
-        <div className="mb-1 flex items-center gap-2 px-2 py-2 text-sm text-gray-400">
-          <FolderOpen size={16} className="text-yellow-400" />
-          src
-        </div>
-
-        <div className="ml-4 border-l border-white/10 pl-2">
-          <button
-            onClick={() => setSrcOpen((previous) => !previous)}
-            className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-400 hover:bg-white/5"
-          >
-            {srcOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Folder size={15} className="text-yellow-400" />
-            pages
-          </button>
-
-          {srcOpen && (
-            <div className="ml-4 border-l border-white/10 pl-2">
-              {sampleResults.map((item) => (
-                <button
-                  key={item.path}
-                  onClick={() => handleOpenFile(item)}
-                  className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                    selectedResult?.path === item.path
-                      ? "bg-violet-500/15 text-violet-300"
-                      : "text-gray-400 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <FileCode2 size={15} />
-                  {item.path.split("/").pop()}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    )}
+  <div className="ml-5 mt-2 border-l border-white/10 pl-3">
+    <FileTreeNode
+      node={fileTree}
+      isRoot
+      onOpenFile={handleOpenFile}
+      selectedPath={selectedResult?.path}
+    />
   </div>
-</section>
+)}
+ </section>
 
 <div className="min-w-0">
         <section className="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
@@ -466,13 +733,13 @@ useEffect(() => {
             <div className="border-b border-white/10 p-5">
               <h2 className="font-semibold">Relevant code</h2>
               <p className="mt-1 text-xs text-gray-500">
-                {filteredResults.length} matching sample results
+                {displayedResults.length} matching results
               </p>
             </div>
 
             <div className="p-3">
-              {filteredResults.length > 0 ? (
-                filteredResults.map((item) => (
+              {displayedResults.length > 0 ? (
+                displayedResults.map((item) => (
                   <button
                     key={item.path}
                     onClick={() => handleOpenFile(item)}
@@ -498,7 +765,7 @@ useEffect(() => {
               ) : (
                 <div className="py-12 text-center text-gray-500">
                   <SearchX className="mx-auto mb-3" size={28} />
-                  No matching sample results.
+                  No matching results found.
                 </div>
               )}
             </div>
@@ -547,11 +814,22 @@ useEffect(() => {
 </div>
 
 <div className="overflow-hidden">
+    {fileLoading && (
+  <p className="p-4 text-sm text-gray-400">
+    Loading file contents...
+  </p>
+)}
+
+{fileError && (
+  <p className="p-4 text-sm text-red-400">
+    {fileError}
+  </p>
+)}
   <Editor
     height="350px"
     language={getEditorLanguage(selectedResult.path)}
     theme="vs-dark"
-    value={selectedResult.snippet}
+    value={fileContent}
     onMount={(editor) => {
   editorRef.current = editor;
   editor.revealLineInCenter(targetLine);
@@ -630,17 +908,20 @@ useEffect(() => {
     />
 
     <button
-      onClick={handleSendMessage}
-      disabled={!chatInput.trim()}
-      className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      Send
-    </button>
+  onClick={handleSendMessage}
+  disabled={!chatInput.trim() || chatLoading}
+  className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+>
+  {chatLoading ? "Thinking..." : "Send"}
+</button>
   </div>
 
-  <p className="mt-3 text-xs text-yellow-500/80">
-    Demo AI responses — backend integration coming soon.
+  {chatError && (
+  <p className="mt-3 text-sm text-red-400">
+    {chatError}
   </p>
+)}
+
 </div>
 
               </>

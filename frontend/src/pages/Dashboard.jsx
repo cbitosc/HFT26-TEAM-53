@@ -49,8 +49,9 @@ function Dashboard() {
   navigate("/processing", {
     state: {
       source: activeTab,
-      fileName: selectedFile?.name || "",
-      githubUrl: githubUrl,
+      file: selectedFile,
+fileName: selectedFile?.name || "",
+githubUrl: githubUrl,
     },
   });
 };
