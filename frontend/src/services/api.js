@@ -60,3 +60,16 @@ export async function searchRepository(repoId, query, topK = 10) {
     }),
   });
 }
+export async function askRepository(repoId, question, topK = 10) {
+  return apiRequest("/ask", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      repo_id: repoId,
+      question: question,
+      top_k: topK,
+    }),
+  });
+}

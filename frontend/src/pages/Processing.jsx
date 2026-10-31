@@ -253,10 +253,6 @@ const [repoData, setRepoData] = useState(null);
   </button>
 )}
 
-          <p className="mt-6 text-center text-xs text-yellow-500/80">
-            Demo processing simulation — actual repository analysis will be
-            connected through the backend.
-          </p>
         </div>
       </div>
     </div>

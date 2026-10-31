@@ -133,7 +133,57 @@ function buildFileTree(files) {
   return root;
 }
 
+function FileTreeNode({ node, onOpenFile, selectedPath, isRoot = false }) {
+  const [isOpen, setIsOpen] = useState(true);
+  const folders = Object.values(node.folders);
 
+  return (
+    <div>
+      {!isRoot && (
+        <button
+          onClick={() => setIsOpen((previous) => !previous)}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-400 hover:bg-white/5"
+        >
+          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {isOpen ? (
+            <FolderOpen size={16} className="text-yellow-400" />
+          ) : (
+            <Folder size={16} className="text-yellow-400" />
+          )}
+          {node.name}
+        </button>
+      )}
+
+      {(isOpen || isRoot) && (
+        <div className={isRoot ? "" : "ml-4 border-l border-white/10 pl-2"}>
+          {folders.map((folder) => (
+            <FileTreeNode
+              key={folder.name}
+              node={folder}
+              onOpenFile={onOpenFile}
+              selectedPath={selectedPath}
+            />
+          ))}
+
+          {node.files.map((file) => (
+            <button
+              key={file.path}
+              onClick={() => onOpenFile(file)}
+              className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+                selectedPath === file.path
+                  ? "bg-violet-500/15 text-violet-300"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <FileCode2 size={15} />
+              <span className="truncate">{file.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function Workspace() {
     const location = useLocation();
 
@@ -725,7 +775,8 @@ const displayedResults = searchResults ?? filteredResults;
     />
   </div>
 )}
- </section>
+</div>
+</section>
 
 <div className="min-w-0">
         <section className="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
