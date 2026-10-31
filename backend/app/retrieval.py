@@ -1,4 +1,5 @@
 import re
+
 import file_walker
 from config import WORKSPACE
 
@@ -9,8 +10,18 @@ STOP = {"the", "are", "how", "what", "where", "does", "and", "for", "this",
 SYMBOL = re.compile(r"^\s*(?:async\s+def|def|class|function)\s+(\w+)")
 _cache = {}
 
+
+def _stem(t):
+    for suf in ("ing", "ed", "es", "s"):
+        if t.endswith(suf) and len(t) - len(suf) >= 4:
+            return t[:-len(suf)]
+    return t
+
+
 def _terms(text):
-    return {t for t in re.findall(r"[a-zA-Z_]+", text.lower()) if len(t) > 2 and t not in STOP}
+    return {_stem(t) for t in re.findall(r"[a-zA-Z_]+", text.lower())
+            if len(t) > 2 and t not in STOP}
+
 
 def _chunks(repo_id):
     if repo_id in _cache:
@@ -29,15 +40,16 @@ def _chunks(repo_id):
     _cache[repo_id] = out
     return out
 
+
 def search(repo_id, query, top_k=5):
     terms = _terms(query)
     scored = []
     for c in _chunks(repo_id):
-        path_hits = [t for t in terms if t in c["file_path"].lower()]
+        path_l = c["file_path"].lower()
+        path_hits = [t for t in terms if t in path_l]
         sym_hits = [t for t in terms if c["symbol"] and t in c["symbol"].lower()]
         body_hits = [t for t in terms if t in c["lower"]]
         score = 3 * len(path_hits) + 4 * len(sym_hits) + len(body_hits)
-         path_l = c["file_path"].lower()
         if any(w in path_l and w not in terms for w in LOW_PRIORITY):
             score *= 0.5
         if score == 0:
@@ -52,12 +64,3 @@ def search(repo_id, query, top_k=5):
     return [{**{k: c[k] for k in ("file_path", "symbol", "start_line", "end_line", "snippet")},
              "score": round(s / best, 2), "match_reasons": r, "matched": sorted(set(m))}
             for s, c, r, m in top]
-def _stem(t):
-    for suf in ("ing", "ed", "es", "s"):
-        if t.endswith(suf) and len(t) - len(suf) >= 4:
-            return t[:-len(suf)]
-    return t
-
-def _terms(text):
-    return {_stem(t) for t in re.findall(r"[a-zA-Z_]+", text.lower())
-            if len(t) > 2 and t not in STOP}
