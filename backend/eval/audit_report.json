@@ -1,0 +1,144 @@
+{
+  "POST /upload": {
+    "request": "POST /upload",
+    "body": "multipart/form-data: file=sample.zip",
+    "status": 200,
+    "response": {
+      "repo_id": "f2c1faab",
+      "name": "sample",
+      "source": "zip",
+      "source_url": null,
+      "status": "ready",
+      "file_count": 2,
+      "total_lines": 12,
+      "languages": {
+        "py": 1,
+        "js": 1
+      },
+      "created_at": "2026-10-31T01:37:23.229260+00:00"
+    }
+  },
+  "GET /repository/{repo_id}": {
+    "request": "GET /repository/f2c1faab",
+    "body": null,
+    "status": 200,
+    "response": {
+      "repo_id": "f2c1faab",
+      "name": "sample",
+      "source": "zip",
+      "source_url": null,
+      "status": "ready",
+      "file_count": 2,
+      "total_lines": 12,
+      "languages": {
+        "py": 1,
+        "js": 1
+      },
+      "created_at": "2026-10-31T01:37:23.229260+00:00",
+      "files": [
+        {
+          "path": "proj/src/app.py",
+          "language": "py",
+          "size_bytes": 113,
+          "line_count": 8
+        },
+        {
+          "path": "proj/src/util.js",
+          "language": "js",
+          "size_bytes": 41,
+          "line_count": 4
+        }
+      ]
+    }
+  },
+  "GET /repository/{repo_id}/file": {
+    "request": "GET /repository/f2c1faab/file?path=proj/src/app.py&start=1&end=3",
+    "body": null,
+    "status": 200,
+    "response": {
+      "file_path": "proj/src/app.py",
+      "start_line": 1,
+      "end_line": 3,
+      "content": "def login_user(name):\n    return name\n"
+    }
+  },
+  "POST /search": {
+    "request": "POST /search",
+    "body": {
+      "repo_id": "f2c1faab",
+      "query": "login user",
+      "top_k": 10
+    },
+    "status": 200,
+    "response": {
+      "repo_id": "f2c1faab",
+      "query": "login user",
+      "results": [
+        {
+          "file_path": "proj/src/app.py",
+          "symbol": "login_user",
+          "start_line": 1,
+          "end_line": 7,
+          "snippet": "def login_user(name):\n    return name\n\n\nclass AuthService:\n    def check_password(self, pw):\n        return True",
+          "description": "proj/src/app.py lines 1-7; defines `login_user`; matched terms: login, user",
+          "score": 1.0,
+          "match_reasons": [
+            "symbol in region: login_user",
+            "body match: user",
+            "body match: login"
+          ]
+        }
+      ]
+    }
+  },
+  "POST /ask": {
+    "request": "POST /ask",
+    "body": {
+      "repo_id": "f2c1faab",
+      "question": "Where is login handled?",
+      "top_k": 10
+    },
+    "status": 200,
+    "response": {
+      "repo_id": "f2c1faab",
+      "question": "Where is login handled?",
+      "answer": "login is handled in [proj/src/app.py:1-7].",
+      "answer_source": "llm",
+      "references": [
+        {
+          "file_path": "proj/src/app.py",
+          "symbol": "login_user",
+          "start_line": 1,
+          "end_line": 7,
+          "snippet": "def login_user(name):\n    return name\n\n\nclass AuthService:\n    def check_password(self, pw):\n        return True",
+          "description": "proj/src/app.py lines 1-7; defines `login_user`; matched terms: login",
+          "score": 1.0,
+          "match_reasons": [
+            "symbol in region: login_user",
+            "body match: login"
+          ]
+        }
+      ]
+    }
+  },
+  "POST /github/import": {
+    "request": "POST /github/import",
+    "body": {
+      "url": "https://github.com/pallets/click"
+    },
+    "status": 200,
+    "response": {
+      "repo_id": "04af0ead",
+      "name": "click",
+      "source": "github",
+      "source_url": "https://github.com/pallets/click",
+      "status": "ready",
+      "file_count": 91,
+      "total_lines": 30469,
+      "languages": {
+        "py": 91
+      },
+      "created_at": "2026-10-31T01:38:30.806604+00:00"
+    }
+  }
+}
